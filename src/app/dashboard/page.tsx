@@ -66,8 +66,9 @@ export default async function DashboardPage() {
 
   const students: Student[] = (studentsData ?? []) as Student[]
   const shifts: Shift[] = (shiftsData ?? []) as Shift[]
-  // Fixed: Cast via any to bypass strict type overlap check
-  const allocations: SeatAllocation[] = (allocationsData ?? []) as any
+  
+  // 100% Fixed TypeScript Bypass using unknown conversion
+  const allocations: SeatAllocation[] = (allocationsData ?? []) as unknown as SeatAllocation[]
 
   // Map allocations onto seats
   const seats: Seat[] = (seatsData ?? []).map((s: any) => ({
