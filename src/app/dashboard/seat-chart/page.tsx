@@ -64,8 +64,8 @@ export default async function SeatChartPage() {
 
   const students: Student[] = (studentsData ?? []) as Student[]
   const shifts: Shift[] = (shiftsData ?? []) as Shift[]
-  const allocations: SeatAllocation[] = (allocationsData ?? []) as SeatAllocation[]
-
+  const allocations: SeatAllocation[] = (allocationsData ?? []) as unknown as SeatAllocation[]
+  
   // Map allocations onto seats
   const seats: Seat[] = (seatsData ?? []).map((s: any) => ({
     ...s,
