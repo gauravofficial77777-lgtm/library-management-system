@@ -101,9 +101,7 @@ export default async function AdminPage() {
     phone: s.phone,
     preparation_field: s.preparation_field || 'General',
     library_name:
-      (s.libraries as { name: string } | null)?.name ?? 'Unknown',
-  }))
-
+      (Array.isArray(s.libraries) ? s.libraries[0] : s.libraries as any)?.name ?? 'Unknown',
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Stat Cards */}
