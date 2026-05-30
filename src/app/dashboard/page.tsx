@@ -23,7 +23,7 @@ export default async function DashboardPage() {
     .from('libraries')
     .select('id, name, total_seats, seat_label_prefix')
     .eq('owner_id', user.id)
-    .single()
+    .maybeSingle()
 
   // Onboarding Server Action if Library doesn't exist
   async function createLibrary(formData: FormData) {
@@ -31,14 +31,14 @@ export default async function DashboardPage() {
     const supabaseServer = await createClient()
     const { data: { user: authUser } } = await supabaseServer.auth.getUser()
     
-    if (!authUser) return
+    if (!authUser) redirect('/login')
 
     const name = formData.get('libraryName') as string
     const totalSeats = parseInt(formData.get('totalSeats') as string) || 50
     const prefix = formData.get('prefix') as string || 'G'
 
-    // Insert new library linked to this owner
-    const { data: newLib, error: libError } = await supabaseServer
+    // Insert new library linked to this owner (Fixed .select() approach)
+    const { data: insertedLibs, error: libError } = await supabaseServer
       .from('libraries')
       .insert([{ 
         name, 
@@ -47,9 +47,13 @@ export default async function DashboardPage() {
         owner_id: authUser.id 
       }])
       .select()
-      .single()
 
-    if (libError || !newLib) return
+    if (libError || !insertedLibs || insertedLibs.length === 0) {
+      console.error('Library insertion error:', libError)
+      return
+    }
+
+    const newLib = insertedLibs[0]
 
     // Insert Default Core Operating Shifts for this new library
     await supabaseServer.from('shifts').insert([
@@ -64,9 +68,12 @@ export default async function DashboardPage() {
       seat_number: i + 1,
       status: 'vacant'
     }))
+    
     await supabaseServer.from('seats').insert(seatInserts)
 
+    // Force clear cache and push user to dashboard refresh
     revalidatePath('/dashboard')
+    redirect('/dashboard')
   }
 
   // Beautiful Premium Onboarding Form UI if no library found
