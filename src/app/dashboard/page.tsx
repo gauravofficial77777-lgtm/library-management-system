@@ -18,8 +18,8 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // 1. Fetch library structure using maybeSingle to handle empty states cleanly
-  const { data: library, error: fetchError } = await supabase
+  // 1. Fetch library structure cleanly using dynamic revalidation on server side
+  const { data: library } = await supabase
     .from('libraries')
     .select('id, name, total_seats, seat_label_prefix')
     .eq('owner_id', user.id)
@@ -37,7 +37,7 @@ export default async function DashboardPage() {
     const totalSeats = parseInt(formData.get('totalSeats') as string) || 50
     const prefix = formData.get('prefix') as string || 'G'
 
-    // Clean execution flow: Insert and query exact record safely
+    // Secure transactional block setup
     const { data: insertedLibs, error: libError } = await supabaseServer
       .from('libraries')
       .insert([{ 
@@ -49,42 +49,36 @@ export default async function DashboardPage() {
       .select()
 
     if (libError || !insertedLibs || insertedLibs.length === 0) {
-      console.error('Onboarding flow aborted at library creation:', libError)
+      console.error('Library insertion failed:', libError)
       return
     }
 
     const newLib = insertedLibs[0]
 
-    // Create associated operational metadata blocks
-    const { error: shiftError } = await supabaseServer.from('shifts').insert([
+    // Sequential operational injection
+    await supabaseServer.from('shifts').insert([
       { library_id: newLib.id, name: 'Morning', start_time: '07:00:00', end_time: '13:00:00', is_full_day: false, sort_order: 1 },
       { library_id: newLib.id, name: 'Evening', start_time: '13:00:00', end_time: '19:00:00', is_full_day: false, sort_order: 2 },
       { library_id: newLib.id, name: 'Night', start_time: '19:00:00', end_time: '07:00:00', is_full_day: false, sort_order: 3 }
     ])
 
-    if (shiftError) {
-      console.error('Onboarding flow error at shifts allocation:', shiftError)
-    }
-
-    // Instantly seed and structure seats framework
     const seatInserts = Array.from({ length: totalSeats }, (_, i) => ({
       library_id: newLib.id,
       seat_number: i + 1,
       status: 'vacant'
     }))
     
-    const { error: seatError } = await supabaseServer.from('seats').insert(seatInserts)
-    if (seatError) {
-      console.error('Onboarding flow error at seats creation:', seatError)
-    }
+    await supabaseServer.from('seats').insert(seatInserts)
 
-    // Radical cache wipe to prevent browser dynamic states hanging
+    // Complete dynamic layout purging to break free from local cache traps
     revalidatePath('/', 'layout')
-    revalidatePath('/dashboard')
+    revalidatePath('/dashboard', 'page')
+    
+    // Explicit return trigger for next router pipeline execution
     redirect('/dashboard')
   }
 
-  // Render Premium Onboarding Screen if data grid is missing
+  // Render Onboarding Screen Form if data grid is missing
   if (!library) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
@@ -159,28 +153,25 @@ export default async function DashboardPage() {
     )
   }
 
-  // 2. Seats fetch execution
+  // 2. Data queries execution for populated state
   const { data: seatsData } = await supabase
     .from('seats')
     .select('id, seat_number, library_id, status, updated_at')
     .eq('library_id', library.id)
     .order('seat_number', { ascending: true })
 
-  // 3. Students tracking system
   const { data: studentsData } = await supabase
     .from('students')
     .select('id, name, phone, seat_number, monthly_fee, fee_status, fee_due_date, current_slot, preparation_field, library_id, seat_id, joining_date')
     .eq('library_id', library.id)
     .order('name', { ascending: true })
 
-  // 4. Time block shifts config
   const { data: shiftsData } = await supabase
     .from('shifts')
     .select('id, library_id, name, start_time, end_time, is_full_day, sort_order')
     .eq('library_id', library.id)
     .order('sort_order', { ascending: true })
 
-  // 5. Active allocations join matrix
   const { data: allocationsData } = await supabase
     .from('seat_allocations')
     .select('id, seat_id, shift_id, student_id, is_active, student:students(id, name, phone, preparation_field, fee_due_date), shift:shifts(id, name, is_full_day)')
@@ -190,7 +181,6 @@ export default async function DashboardPage() {
   const shifts: Shift[] = (shiftsData ?? []) as Shift[]
   const allocations: SeatAllocation[] = (allocationsData ?? []) as unknown as SeatAllocation[]
 
-  // Compute final state structures safely
   const seats: Seat[] = (seatsData ?? []).map((s: any) => ({
     ...s,
     allocations: allocations.filter((a) => a.seat_id === s.id),
@@ -223,7 +213,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Metrics breakdown grid layout row */}
+      {/* Metrics Row */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl border bg-white p-3 shadow-sm">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total Seats</p>
@@ -271,7 +261,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Interactive Seat map initialization */}
+      {/* Seat Map */}
       <div className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-xs font-bold text-gray-800 uppercase tracking-wider">Live Seat Map</h2>
         <SeatGrid
