@@ -18,8 +18,8 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // 1. Library config
-  const { data: library } = await supabase
+  // 1. Fetch library structure using maybeSingle to handle empty states cleanly
+  const { data: library, error: fetchError } = await supabase
     .from('libraries')
     .select('id, name, total_seats, seat_label_prefix')
     .eq('owner_id', user.id)
@@ -37,7 +37,7 @@ export default async function DashboardPage() {
     const totalSeats = parseInt(formData.get('totalSeats') as string) || 50
     const prefix = formData.get('prefix') as string || 'G'
 
-    // Insert new library linked to this owner (Fixed .select() approach)
+    // Clean execution flow: Insert and query exact record safely
     const { data: insertedLibs, error: libError } = await supabaseServer
       .from('libraries')
       .insert([{ 
@@ -49,34 +49,42 @@ export default async function DashboardPage() {
       .select()
 
     if (libError || !insertedLibs || insertedLibs.length === 0) {
-      console.error('Library insertion error:', libError)
+      console.error('Onboarding flow aborted at library creation:', libError)
       return
     }
 
     const newLib = insertedLibs[0]
 
-    // Insert Default Core Operating Shifts for this new library
-    await supabaseServer.from('shifts').insert([
+    // Create associated operational metadata blocks
+    const { error: shiftError } = await supabaseServer.from('shifts').insert([
       { library_id: newLib.id, name: 'Morning', start_time: '07:00:00', end_time: '13:00:00', is_full_day: false, sort_order: 1 },
       { library_id: newLib.id, name: 'Evening', start_time: '13:00:00', end_time: '19:00:00', is_full_day: false, sort_order: 2 },
       { library_id: newLib.id, name: 'Night', start_time: '19:00:00', end_time: '07:00:00', is_full_day: false, sort_order: 3 }
     ])
 
-    // Generate and Insert base seats instantly into database
+    if (shiftError) {
+      console.error('Onboarding flow error at shifts allocation:', shiftError)
+    }
+
+    // Instantly seed and structure seats framework
     const seatInserts = Array.from({ length: totalSeats }, (_, i) => ({
       library_id: newLib.id,
       seat_number: i + 1,
       status: 'vacant'
     }))
     
-    await supabaseServer.from('seats').insert(seatInserts)
+    const { error: seatError } = await supabaseServer.from('seats').insert(seatInserts)
+    if (seatError) {
+      console.error('Onboarding flow error at seats creation:', seatError)
+    }
 
-    // Force clear cache and push user to dashboard refresh
+    // Radical cache wipe to prevent browser dynamic states hanging
+    revalidatePath('/', 'layout')
     revalidatePath('/dashboard')
     redirect('/dashboard')
   }
 
-  // Beautiful Premium Onboarding Form UI if no library found
+  // Render Premium Onboarding Screen if data grid is missing
   if (!library) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
@@ -151,28 +159,28 @@ export default async function DashboardPage() {
     )
   }
 
-  // 2. Seats
+  // 2. Seats fetch execution
   const { data: seatsData } = await supabase
     .from('seats')
     .select('id, seat_number, library_id, status, updated_at')
     .eq('library_id', library.id)
     .order('seat_number', { ascending: true })
 
-  // 3. Students
+  // 3. Students tracking system
   const { data: studentsData } = await supabase
     .from('students')
     .select('id, name, phone, seat_number, monthly_fee, fee_status, fee_due_date, current_slot, preparation_field, library_id, seat_id, joining_date')
     .eq('library_id', library.id)
     .order('name', { ascending: true })
 
-  // 4. Shifts
+  // 4. Time block shifts config
   const { data: shiftsData } = await supabase
     .from('shifts')
     .select('id, library_id, name, start_time, end_time, is_full_day, sort_order')
     .eq('library_id', library.id)
     .order('sort_order', { ascending: true })
 
-  // 5. Active allocations with joined student and shift data
+  // 5. Active allocations join matrix
   const { data: allocationsData } = await supabase
     .from('seat_allocations')
     .select('id, seat_id, shift_id, student_id, is_active, student:students(id, name, phone, preparation_field, fee_due_date), shift:shifts(id, name, is_full_day)')
@@ -180,17 +188,14 @@ export default async function DashboardPage() {
 
   const students: Student[] = (studentsData ?? []) as Student[]
   const shifts: Shift[] = (shiftsData ?? []) as Shift[]
-  
-  // 100% Fixed TypeScript Bypass using unknown conversion
   const allocations: SeatAllocation[] = (allocationsData ?? []) as unknown as SeatAllocation[]
 
-  // Map allocations onto seats
+  // Compute final state structures safely
   const seats: Seat[] = (seatsData ?? []).map((s: any) => ({
     ...s,
     allocations: allocations.filter((a) => a.seat_id === s.id),
   }))
 
-  // 6-Box metrics
   const totalSeatsCount = seats.length
   const occupiedCount = seats.filter((s) => (s.allocations && s.allocations.length > 0)).length
   const totalSlots = seats.length * shifts.length
@@ -218,15 +223,13 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* 6 Grid Boxes Row - Single Compact Row */}
+      {/* Metrics breakdown grid layout row */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-        {/* Box 1: Total Seats */}
         <div className="rounded-xl border bg-white p-3 shadow-sm">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total Seats</p>
           <p className="mt-1 text-xl font-bold text-gray-900">{totalSeatsCount}</p>
         </div>
 
-        {/* Box 2: Occupied */}
         <div className="cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:bg-slate-50 transition">
           <div className="flex items-center justify-between gap-1">
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">Occupied Seats</p>
@@ -235,7 +238,6 @@ export default async function DashboardPage() {
           <p className="mt-1 text-xl font-bold text-red-600">{occupiedCount}</p>
         </div>
 
-        {/* Box 3: Available Slots */}
         <div className="cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:bg-slate-50 transition">
           <div className="flex items-center justify-between gap-1">
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">Available Slots</p>
@@ -244,7 +246,6 @@ export default async function DashboardPage() {
           <p className="mt-1 text-xl font-bold text-emerald-600">{availableSlotsCount}</p>
         </div>
 
-        {/* Box 4: Fee Pending */}
         <div className="cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:bg-slate-50 transition">
           <div className="flex items-center justify-between gap-1">
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">Fee Pending</p>
@@ -253,7 +254,6 @@ export default async function DashboardPage() {
           <p className="mt-1 text-xl font-bold text-amber-500">{feePendingCount}</p>
         </div>
 
-        {/* Box 5: Fee Complete */}
         <div className="cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:bg-slate-50 transition">
           <div className="flex items-center justify-between gap-1">
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">Fee Complete</p>
@@ -262,7 +262,6 @@ export default async function DashboardPage() {
           <p className="mt-1 text-xl font-bold text-blue-600">{feePaidCount}</p>
         </div>
 
-        {/* Box 6: Overall Students */}
         <div className="cursor-pointer rounded-xl border bg-white p-3 shadow-sm hover:bg-slate-50 transition">
           <div className="flex items-center justify-between gap-1">
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">Overall Joined</p>
@@ -272,7 +271,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Live Seat Map Area */}
+      {/* Interactive Seat map initialization */}
       <div className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-xs font-bold text-gray-800 uppercase tracking-wider">Live Seat Map</h2>
         <SeatGrid
