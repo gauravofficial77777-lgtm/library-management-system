@@ -5,6 +5,10 @@ import { Seat, Student, Shift, SeatAllocation } from '@/types/database'
 import SeatGrid from '@/components/seat-chart/SeatGrid'
 import { getCurrentSlot, getSlotLabel } from '@/lib/utils'
 
+// FORCE DYNAMIC CONFIG TO KILL NEXT.JS LOCAL CACHE LOOPS PERMANENTLY
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export const metadata = {
   title: 'Dashboard — Library Management',
 }
@@ -18,7 +22,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // 1. Fetch library structure cleanly using dynamic revalidation on server side
+  // 1. Fetch library structural metadata live
   const { data: library } = await supabase
     .from('libraries')
     .select('id, name, total_seats, seat_label_prefix')
@@ -37,7 +41,7 @@ export default async function DashboardPage() {
     const totalSeats = parseInt(formData.get('totalSeats') as string) || 50
     const prefix = formData.get('prefix') as string || 'G'
 
-    // Secure transactional block setup
+    // Insert new core library node
     const { data: insertedLibs, error: libError } = await supabaseServer
       .from('libraries')
       .insert([{ 
@@ -49,13 +53,13 @@ export default async function DashboardPage() {
       .select()
 
     if (libError || !insertedLibs || insertedLibs.length === 0) {
-      console.error('Library insertion failed:', libError)
+      console.error('Critical deployment fault at library registration:', libError)
       return
     }
 
     const newLib = insertedLibs[0]
 
-    // Sequential operational injection
+    // Concurrent relational insertions framework
     await supabaseServer.from('shifts').insert([
       { library_id: newLib.id, name: 'Morning', start_time: '07:00:00', end_time: '13:00:00', is_full_day: false, sort_order: 1 },
       { library_id: newLib.id, name: 'Evening', start_time: '13:00:00', end_time: '19:00:00', is_full_day: false, sort_order: 2 },
@@ -70,15 +74,15 @@ export default async function DashboardPage() {
     
     await supabaseServer.from('seats').insert(seatInserts)
 
-    // Complete dynamic layout purging to break free from local cache traps
+    // Complete purge of routers data lifecycle states
     revalidatePath('/', 'layout')
     revalidatePath('/dashboard', 'page')
     
-    // Explicit return trigger for next router pipeline execution
+    // Explicit dynamic pipeline redirect instructions
     redirect('/dashboard')
   }
 
-  // Render Onboarding Screen Form if data grid is missing
+  // Render Premium Onboarding Form UI if metadata row is missing
   if (!library) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
@@ -153,7 +157,7 @@ export default async function DashboardPage() {
     )
   }
 
-  // 2. Data queries execution for populated state
+  // 2. Continuous real-time stream synchronization
   const { data: seatsData } = await supabase
     .from('seats')
     .select('id, seat_number, library_id, status, updated_at')
@@ -213,7 +217,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Metrics Row */}
+      {/* Metrics Allocation Block Grid */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl border bg-white p-3 shadow-sm">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total Seats</p>
@@ -261,7 +265,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Seat Map */}
+      {/* Synchronized SeatMap Display */}
       <div className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-xs font-bold text-gray-800 uppercase tracking-wider">Live Seat Map</h2>
         <SeatGrid
