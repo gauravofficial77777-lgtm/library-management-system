@@ -15,15 +15,18 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // 1. Fetch library with defensive maybeSingle to prevent crash if row is temporarily missing
-  let { data: library } = await supabase
+  // 1. Fetch library with defensive maybeSingle to prevent crash
+  const { data: fetchedLibrary } = await supabase
     .from('libraries')
     .select('id, name, total_seats, seat_label_prefix')
     .eq('owner_id', user.id)
     .maybeSingle()
 
+  // Explicitly typed variable to hold our guaranteed library structure
+  let activeLibrary: any = fetchedLibrary
+
   // Silent fallback auto-creation if user somehow bypasses the main dashboard onboarding checks
-  if (!library) {
+  if (!fetchedLibrary) {
     const { data: insertedLibs } = await supabase
       .from('libraries')
       .insert([{ 
@@ -35,37 +38,39 @@ export default async function SettingsPage() {
       .select()
 
     if (insertedLibs && insertedLibs.length > 0) {
-      library = insertedLibs[0]
+      activeLibrary = insertedLibs[0]
       
       await supabase.from('shifts').insert([
-        { library_id: library.id, name: 'Morning', start_time: '07:00:00', end_time: '13:00:00', is_full_day: false, sort_order: 1 },
-        { library_id: library.id, name: 'Evening', start_time: '13:00:00', end_time: '19:00:00', is_full_day: false, sort_order: 2 },
-        { library_id: library.id, name: 'Night', start_time: '19:00:00', end_time: '07:00:00', is_full_day: false, sort_order: 3 }
+        { library_id: insertedLibs[0].id, name: 'Morning', start_time: '07:00:00', end_time: '13:00:00', is_full_day: false, sort_order: 1 },
+        { library_id: insertedLibs[0].id, name: 'Evening', start_time: '13:00:00', end_time: '19:00:00', is_full_day: false, sort_order: 2 },
+        { library_id: insertedLibs[0].id, name: 'Night', start_time: '19:00:00', end_time: '07:00:00', is_full_day: false, sort_order: 3 }
       ])
     }
   }
 
-  if (!library) return <div className="p-6 text-sm text-red-500">Critical Error: Initialization failed.</div>
+  if (!activeLibrary) {
+    return <div className="p-6 text-sm text-red-500">Critical Error: Initialization failed. Please refresh.</div>
+  }
 
   // 2. Fetch shifts connected to this library
   const { data: shifts } = await supabase
     .from('shifts')
     .select('*')
-    .eq('library_id', library.id)
+    .eq('library_id', activeLibrary.id)
     .order('sort_order', { ascending: true })
 
   return (
     <div className="space-y-6">
       <div className="border-b pb-2">
         <h1 className="text-lg font-bold text-gray-900">Library Settings</h1>
-        <p className="text-[11px] text-gray-500">Configure seats, shifts, and preferences for {library.name}</p>
+        <p className="text-[11px] text-gray-500">Configure seats, shifts, and preferences for {activeLibrary.name}</p>
       </div>
 
       {/* Section 1: Seat & Name Configuration Form */}
-      <LibrarySettingsForm library={library as Library} />
+      <LibrarySettingsForm library={activeLibrary as Library} />
 
       {/* Section 2: Shift Management */}
-      <ShiftManager libraryId={library.id} initialShifts={(shifts ?? []) as Shift[]} />
+      <ShiftManager libraryId={activeLibrary.id} initialShifts={(shifts ?? []) as Shift[]} />
     </div>
   )
 }
