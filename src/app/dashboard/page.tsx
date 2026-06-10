@@ -23,14 +23,14 @@ export default async function DashboardPage() {
   if (!user) redirect('/login')
 
   // 1. Fetch library structural metadata live
-  let { data: library } = await supabase
+  const { data: fetchedLibrary } = await supabase
     .from('libraries')
     .select('id, name, total_seats, seat_label_prefix')
     .eq('owner_id', user.id)
     .maybeSingle()
 
   // SILENT AUTO-ONBOARDING: If no library exists, create a default configuration on the fly
-  if (!library) {
+  if (!fetchedLibrary) {
     const { data: insertedLibs } = await supabase
       .from('libraries')
       .insert([{ 
@@ -42,23 +42,26 @@ export default async function DashboardPage() {
       .select()
 
     if (insertedLibs && insertedLibs.length > 0) {
-      library = insertedLibs[0]
+      const newLib = insertedLibs[0]
       
-      // Relational insertion of default shifts in background
+      // Relational insertion of default shifts in background using guaranteed newLib constant
       await supabase.from('shifts').insert([
-        { library_id: library.id, name: 'Morning', start_time: '07:00:00', end_time: '13:00:00', is_full_day: false, sort_order: 1 },
-        { library_id: library.id, name: 'Evening', start_time: '13:00:00', end_time: '19:00:00', is_full_day: false, sort_order: 2 },
-        { library_id: library.id, name: 'Night', start_time: '19:00:00', end_time: '07:00:00', is_full_day: false, sort_order: 3 }
+        { library_id: newLib.id, name: 'Morning', start_time: '07:00:00', end_time: '13:00:00', is_full_day: false, sort_order: 1 },
+        { library_id: newLib.id, name: 'Evening', start_time: '13:00:00', end_time: '19:00:00', is_full_day: false, sort_order: 2 },
+        { library_id: newLib.id, name: 'Night', start_time: '19:00:00', end_time: '07:00:00', is_full_day: false, sort_order: 3 }
       ])
       
       revalidatePath('/', 'layout')
-      // Redirect first-time unconfigured user straight to settings page
-      redirect('/dashboard/settings')
     }
+    // Redirect first-time unconfigured user straight to settings page
+    redirect('/dashboard/settings')
   }
 
+  // TypeScript now 100% guarantees 'library' is not null from this point downwards
+  const library = fetchedLibrary
+
   // If library is newly auto-created with 0 seats, push them to settings to initialize configuration
-  if (library && library.total_seats === 0) {
+  if (library.total_seats === 0) {
     redirect('/dashboard/settings')
   }
 
