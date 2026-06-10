@@ -12,7 +12,7 @@ export async function updateLibrarySettings(
   try {
     const supabase = await createClient()
 
-    // 1. Update the core structural library data (Name, Count, and Prefix)
+    // 1. Core metadata patch
     const { error: libError } = await supabase
       .from('libraries')
       .update({
@@ -22,47 +22,48 @@ export async function updateLibrarySettings(
       })
       .eq('id', libraryId)
 
-    if (libError) {
-      console.error('Database failure updating library node:', libError)
-      return { error: libError.message }
-    }
+    if (libError) return { error: libError.message }
 
-    // 2. Fetch active seat counts to prevent unneeded wipeouts
+    // 2. Fetch existing seats safely
     const { data: existingSeats } = await supabase
       .from('seats')
-      .select('id')
+      .select('id, seat_number')
       .eq('library_id', libraryId)
+      .order('seat_number', { ascending: true })
 
-    const currentCount = existingSeats ? existingSeats.length : 0
+    const currentSeats = existingSeats || []
 
-    // Only regenerate structural mapping if seat allocation metrics changed
-    if (totalSeats !== currentCount) {
-      // Purge historical empty seeds safely
-      await supabase.from('seats').delete().eq('library_id', libraryId)
-
-      if (totalSeats > 0) {
-        // Pure sequential generator loop (1 to totalSeats) ensuring NO DUPLICATES
-        const seatInserts = Array.from({ length: totalSeats }, (_, i) => ({
+    // SMART DIFFING SYSTEM: Delete or Insert missing nodes only (No blanket wipeouts)
+    if (totalSeats !== currentSeats.length) {
+      if (totalSeats < currentSeats.length) {
+        // Downsizing layout: Delete only excess seats to lower db load
+        const seatsToDelete = currentSeats.slice(totalSeats).map(s => s.id)
+        if (seatsToDelete.length > 0) {
+          await supabase.from('seats').delete().in('id', seatsToDelete)
+        }
+      } else {
+        // Upsizing layout: Append missing sequential nodes directly
+        const startNumber = currentSeats.length + 1
+        const seatInserts = Array.from({ length: totalSeats - currentSeats.length }, (_, i) => ({
           library_id: libraryId,
-          seat_number: i + 1,
+          seat_number: startNumber + i,
           status: 'vacant'
         }))
 
-        const { error: seatError } = await supabase.from('seats').insert(seatInserts)
-        if (seatError) {
-          console.error('Relational mapping crash during seat execution block:', seatError)
-          return { error: seatError.message }
+        if (seatInserts.length > 0) {
+          const { error: insertError } = await supabase.from('seats').insert(seatInserts)
+          if (insertError) return { error: insertError.message }
         }
       }
     }
 
-    // Purge edge caching pipelines across the routing instances completely
+    // Purge route caching contexts instantly
     revalidatePath('/', 'layout')
     revalidatePath('/dashboard', 'page')
     revalidatePath('/dashboard/settings', 'page')
 
     return { success: true }
   } catch (err: any) {
-    return { error: err.message || 'An unexpected pipeline processing error occurred.' }
+    return { error: err.message || 'Pipeline process exception.' }
   }
 }
