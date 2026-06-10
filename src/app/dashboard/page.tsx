@@ -66,6 +66,7 @@ export default async function DashboardPage() {
       { library_id: newLib.id, name: 'Night', start_time: '19:00:00', end_time: '07:00:00', is_full_day: false, sort_order: 3 }
     ])
 
+    // LOOP FIXED: Generates pure sequential seat numbers (1 to totalSeats) without duplicate grouping
     const seatInserts = Array.from({ length: totalSeats }, (_, i) => ({
       library_id: newLib.id,
       seat_number: i + 1,
