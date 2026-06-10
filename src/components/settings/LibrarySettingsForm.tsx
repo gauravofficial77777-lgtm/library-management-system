@@ -127,7 +127,7 @@ export default function LibrarySettingsForm({ library }: LibrarySettingsFormProp
                 className="inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm"
               >
                 {label}
-              </td>
+              </span>
             ))}
             {hasMore && (
               <span className="inline-flex items-center justify-center px-2 py-1 text-[11px] text-zinc-400">
