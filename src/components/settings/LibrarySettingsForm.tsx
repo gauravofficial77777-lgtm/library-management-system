@@ -2,15 +2,16 @@
 
 import { useState, useTransition } from 'react'
 import { Library } from '@/types/database'
-import { updateSeatCount } from '@/app/actions/seats'
+import { updateLibrarySettings } from '@/app/actions/settings'
 
 interface LibrarySettingsFormProps {
   library: Library
 }
 
 export default function LibrarySettingsForm({ library }: LibrarySettingsFormProps) {
+  const [libraryName, setLibraryName] = useState(library.name || 'My Library')
   const [totalSeats, setTotalSeats] = useState(library.total_seats)
-  const [prefix, setPrefix] = useState(library.seat_label_prefix ?? 'S')
+  const [prefix, setPrefix] = useState(library.seat_label_prefix ?? 'G')
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -23,7 +24,7 @@ export default function LibrarySettingsForm({ library }: LibrarySettingsFormProp
     setError(null)
     setSuccess(false)
     startTransition(async () => {
-      const result = await updateSeatCount(library.id, totalSeats, prefix)
+      const result = await updateLibrarySettings(library.id, libraryName, totalSeats, prefix)
       if (result.error) {
         setError(result.error)
       } else {
@@ -34,14 +35,15 @@ export default function LibrarySettingsForm({ library }: LibrarySettingsFormProp
   }
 
   const hasChanges =
+    libraryName !== library.name ||
     totalSeats !== library.total_seats ||
-    prefix !== (library.seat_label_prefix ?? 'S')
+    prefix !== (library.seat_label_prefix ?? 'G')
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="mb-4">
-        <h2 className="text-sm font-bold text-gray-900">Seat Configuration</h2>
-        <p className="text-[10px] text-gray-500">Adjust the number of seats and their naming convention</p>
+        <h2 className="text-sm font-bold text-gray-900">Library Profile & Naming</h2>
+        <p className="text-[10px] text-gray-500">Update your library identity, total layout seats, and naming prefixes</p>
       </div>
 
       {error && (
@@ -52,78 +54,94 @@ export default function LibrarySettingsForm({ library }: LibrarySettingsFormProp
 
       {success && (
         <div className="mb-4 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-700">
-          <span className="mr-1.5">✓</span>Seat configuration saved successfully.
+          <span className="mr-1.5 font-bold">✓</span> Library configurations and dashboard layout updated successfully.
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {/* Total Seats */}
+      <div className="space-y-4">
+        {/* Full Width Library Name Input */}
         <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-500">
-            Total Seats
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={500}
-            value={totalSeats}
-            onChange={(e) => {
-              const val = parseInt(e.target.value, 10)
-              if (!isNaN(val)) setTotalSeats(val)
-            }}
-            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          />
-          <p className="mt-1 text-[10px] text-zinc-400">Min 1, Max 500</p>
-        </div>
-
-        {/* Seat Label Prefix */}
-        <div>
-          <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-500">
-            Seat Label Prefix
+          <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-500 tracking-wider">
+            Library Name (Sidebar Display)
           </label>
           <input
             type="text"
-            maxLength={5}
-            value={prefix}
-            onChange={(e) => setPrefix(e.target.value)}
-            placeholder="S"
+            required
+            value={libraryName}
+            onChange={(e) => setLibraryName(e.target.value)}
+            placeholder="e.g., Gaurav Library"
             className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           />
-          <p className="mt-1 text-[10px] text-zinc-400">
-            Appears before seat numbers (e.g. &quot;{prefix}1&quot;, &quot;{prefix}2&quot;)
-          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Total Seats */}
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-500 tracking-wider">
+              Total Seats
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={500}
+              value={totalSeats}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10)
+                if (!isNaN(val)) setTotalSeats(val)
+              }}
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-[10px] text-zinc-400">Min 0, Max 500</p>
+          </div>
+
+          {/* Seat Label Prefix */}
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-500 tracking-wider">
+              Seat Label Prefix
+            </label>
+            <input
+              type="text"
+              maxLength={5}
+              value={prefix}
+              onChange={(e) => setPrefix(e.target.value)}
+              placeholder="G"
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-[10px] text-zinc-400">
+              Appears before seat numbers (e.g. &quot;{prefix}1&quot;, &quot;{prefix}2&quot;)
+            </p>
+          </div>
         </div>
       </div>
 
       {/* Live Preview Strip */}
-      <div className="mt-4">
-        <label className="mb-1.5 block text-[10px] font-bold uppercase text-zinc-500">
-          Preview
-        </label>
-        <div className="flex flex-wrap gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-3">
-          {previewLabels.map((label) => (
-            <span
-              key={label}
-              className="inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm"
-            >
-              {label}
-            </span>
-          ))}
-          {hasMore && (
-            <span className="inline-flex items-center justify-center px-2 py-1 text-[11px] text-zinc-400">
-              … +{totalSeats - previewCount} more
-            </span>
-          )}
-          {totalSeats === 0 && (
-            <span className="text-[11px] text-zinc-400">No seats configured</span>
-          )}
+      {totalSeats > 0 && (
+        <div className="mt-4">
+          <label className="mb-1.5 block text-[10px] font-bold uppercase text-zinc-500 tracking-wider">
+            Generated Layout Preview
+          </label>
+          <div className="flex flex-wrap gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-3">
+            {previewLabels.map((label) => (
+              <span
+                key={label}
+                className="inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm"
+              >
+                {label}
+              </td>
+            ))}
+            {hasMore && (
+              <span className="inline-flex items-center justify-center px-2 py-1 text-[11px] text-zinc-400">
+                … +{totalSeats - previewCount} more
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Save Button */}
       <div className="mt-5 flex items-center justify-end gap-3 border-t pt-4">
         {hasChanges && !isPending && (
-          <span className="text-[10px] text-amber-600">You have unsaved changes</span>
+          <span className="text-[10px] text-amber-600 font-medium">You have unsaved adjustments</span>
         )}
         <button
           onClick={handleSave}
@@ -136,10 +154,10 @@ export default function LibrarySettingsForm({ library }: LibrarySettingsFormProp
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Saving…
+              Updating Control Panel…
             </span>
           ) : (
-            'Save Changes'
+            'Save Configurations'
           )}
         </button>
       </div>
